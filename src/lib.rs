@@ -1,8 +1,8 @@
-mod imu_interface;
-mod imu_interface_manager;
-mod imu_interface_ffi;
-mod hal;
-mod reg;
+pub mod imu_interface;
+pub mod imu_interface_manager;
+pub mod imu_interface_ffi;
+pub mod hardware;
+pub mod serial_interface;
 
 // #[cfg(test)]
 // mod tests {

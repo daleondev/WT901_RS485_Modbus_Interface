@@ -1,7 +1,8 @@
 use std::ffi::{c_char, c_float, c_int, c_uint, c_ushort};
+use std::mem::zeroed;
 
 use crate::imu_interface_manager::{ImuInterfaceManager, get_imu_manager, new_uuid, UUID_NULL};
-use crate::imu_interface::{ImuDeviceData, ImuInterface, scan_devices};
+use crate::imu_interface::{ImuDeviceData, ImuInterface};
 
 #[repr(C)]
 pub struct ImuDevice {
@@ -11,6 +12,7 @@ pub struct ImuDevice {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct ImuData {
     pub acc: [c_float; 3],
     pub gyro: [c_float; 3],
@@ -38,7 +40,7 @@ pub enum ImuError {
     ImuErrorUnknown,
 }
 
-pub type ImuDataCallback = extern "C" fn(data: *const ImuData);
+pub type ImuDataCallback = Option<extern "C" fn(data: *const ImuData)>;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn imu_init() -> ImuError
@@ -71,22 +73,22 @@ pub extern "C" fn imu_shutdown() -> ImuError
 #[unsafe(no_mangle)]
 pub extern "C" fn imu_scan_devices(out_devices: *mut ImuDevice, out_num_devices: *mut c_uint) -> ImuError
 {
-    unsafe { *out_num_devices = 0 };
+    // unsafe { *out_num_devices = 0 };
 
-    let devices = match scan_devices() {
-        Ok(devices) => devices,
-        Err(err) => return err,
-    };
+    // let devices = match scan_devices() {
+    //     Ok(devices) => devices,
+    //     Err(err) => return err,
+    // };
 
-    unsafe {
-        for (i, device) in devices.iter().enumerate() {
-            let device_ptr = out_devices.add(i);
-            (*device_ptr).name = device.name.as_ptr() as *const c_char;
-            (*device_ptr).baudrate = device.baudrate;
-            (*device_ptr).addr = device.addr as c_uint;
-        }
-        *out_num_devices = devices.len() as c_uint;
-    }
+    // unsafe {
+    //     for (i, device) in devices.iter().enumerate() {
+    //         let device_ptr = out_devices.add(i);
+    //         (*device_ptr).name = device.name.as_ptr() as *const c_char;
+    //         (*device_ptr).baudrate = device.baudrate;
+    //         (*device_ptr).addr = device.addr as c_uint;
+    //     }
+    //     *out_num_devices = devices.len() as c_uint;
+    // }
 
     ImuError::ImuSuccess
 }
@@ -127,18 +129,18 @@ pub extern "C" fn imu_create_interface(device: *const ImuDevice, out_interface_i
         return ImuError::ImuErrorInitFailed;
     }
 
-    match interface.open_serial() {
-        Ok(_) => {},
-        Err(err) => {
-            match manager.remove_interface(id) {
-                Ok(_) => {},
-                Err(err) => {
-                    return err;
-                }
-            }
-            return err;
-        }
-    }
+    // match interface.open_serial() {
+    //     Ok(_) => {},
+    //     Err(err) => {
+    //         match manager.remove_interface(id) {
+    //             Ok(_) => {},
+    //             Err(err) => {
+    //                 return err;
+    //             }
+    //         }
+    //         return err;
+    //     }
+    // }
 
     unsafe { *out_interface_id = id };
     ImuError::ImuSuccess
@@ -175,7 +177,10 @@ pub extern "C" fn imu_set_data_callback(interface_id: c_uint, callback: ImuDataC
         Err(err) => return err,
     };
 
-    interface.set_data_callback(callback);
+    match interface.set_data_callback(callback) {
+        Ok(_) => {},
+        Err(err) => return err,
+    }
     ImuError::ImuSuccess
 }
 
@@ -217,53 +222,6 @@ pub extern "C" fn imu_stop_task(interface_id: c_uint) -> ImuError
     };
 
     match interface.stop() {
-        Ok(_) => {},
-        Err(err) => return err,
-    };
-
-    ImuError::ImuSuccess
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn imu_get_bandwidth(interface_id: c_uint, out_bandwidth: *mut c_ushort) -> ImuError
-{
-    unsafe { *out_bandwidth = 0 };
-
-    let mut manager = get_imu_manager();
-    let manager = match manager.as_mut() {
-        Some(manager) => manager,
-        None => return ImuError::ImuErrorNotInit,
-    };
-
-    let interface = match manager.get_interface(interface_id) {
-        Ok(interface) => interface,
-        Err(err) => return err,
-    };
-
-    let bandwidth =  match interface.get_band_width() {
-        Ok(bandwidth) => bandwidth,
-        Err(err) => return err,
-    };
-
-    unsafe { *out_bandwidth = bandwidth };
-    ImuError::ImuSuccess
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn imu_set_bandwidth(interface_id: c_uint, bandwidth: c_ushort) -> ImuError
-{
-    let mut manager = get_imu_manager();
-    let manager = match manager.as_mut() {
-        Some(manager) => manager,
-        None => return ImuError::ImuErrorNotInit,
-    };
-
-    let interface = match manager.get_interface(interface_id) {
-        Ok(interface) => interface,
-        Err(err) => return err,
-    };
-
-    match interface.set_band_width(bandwidth) {
         Ok(_) => {},
         Err(err) => return err,
     };
@@ -334,5 +292,77 @@ pub extern "C" fn imu_reset(interface_id: c_uint) -> ImuError
         Err(err) => return err,
     };
 
+    ImuError::ImuSuccess
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn imu_get_bandwidth(interface_id: c_uint, out_bandwidth: *mut c_ushort) -> ImuError
+{
+    unsafe { *out_bandwidth = 0 };
+
+    let mut manager = get_imu_manager();
+    let manager = match manager.as_mut() {
+        Some(manager) => manager,
+        None => return ImuError::ImuErrorNotInit,
+    };
+
+    let interface = match manager.get_interface(interface_id) {
+        Ok(interface) => interface,
+        Err(err) => return err,
+    };
+
+    let bandwidth =  match interface.get_band_width() {
+        Ok(bandwidth) => bandwidth,
+        Err(err) => return err,
+    };
+
+    unsafe { *out_bandwidth = bandwidth };
+    ImuError::ImuSuccess
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn imu_set_bandwidth(interface_id: c_uint, bandwidth: c_ushort) -> ImuError
+{
+    let mut manager = get_imu_manager();
+    let manager = match manager.as_mut() {
+        Some(manager) => manager,
+        None => return ImuError::ImuErrorNotInit,
+    };
+
+    let interface = match manager.get_interface(interface_id) {
+        Ok(interface) => interface,
+        Err(err) => return err,
+    };
+
+    match interface.set_band_width(bandwidth) {
+        Ok(_) => {},
+        Err(err) => return err,
+    };
+
+    ImuError::ImuSuccess
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn imu_get_data(interface_id: c_uint, out_data: *mut ImuData) -> ImuError
+{
+    unsafe { *out_data = zeroed() };
+
+    let mut manager = get_imu_manager();
+    let manager = match manager.as_mut() {
+        Some(manager) => manager,
+        None => return ImuError::ImuErrorNotInit,
+    };
+
+    let interface = match manager.get_interface(interface_id) {
+        Ok(interface) => interface,
+        Err(err) => return err,
+    };
+
+    let data =  match interface.get_data() {
+        Ok(data) => data,
+        Err(err) => return err,
+    };
+
+    unsafe { *out_data = data };
     ImuError::ImuSuccess
 }
