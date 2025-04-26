@@ -1,0 +1,11 @@
+[package]
+name = "wt901_rs485_modbus_interface"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serialport = "4.7.1"
+
+[lib]
+name = "wt901_rs485_modbus_interface"
+crate-type = ["cdylib"]
