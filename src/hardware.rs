@@ -114,7 +114,7 @@ pub enum Baud {
 #[repr(u16)]
 pub enum Bandwidth {
     HZ256       = 0x00,
-    HZ184       = 0x01,
+    HZ188       = 0x01,
     HZ94        = 0x02,
     HZ44        = 0x03,
     HZ21        = 0x04,

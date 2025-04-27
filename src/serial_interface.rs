@@ -3,6 +3,7 @@ use serialport::{Parity, StopBits};
 
 use crate::imu_interface::ImuDeviceData;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SerialError {
     None,
     OpenFailed,
@@ -33,39 +34,34 @@ pub fn write_serial_byte(port: &mut Box<dyn serialport::SerialPort>, byte: u8) -
 pub fn clear_serial(port: &mut Box<dyn serialport::SerialPort>) -> Result<(), SerialError> {
     port.set_timeout(Duration::from_micros(400)).map_err(|_| SerialError::ReadFailed)?;
     let mut buff: [u8;255] = [0;255];
-    let _ = port.read(&mut buff);
+    port.read(&mut buff).map_err(|_| SerialError::ReadFailed)?;
     Ok(())
 }
 
 pub fn read_serial(port: &mut Box<dyn serialport::SerialPort>, buff: &mut [u8]) -> Result<usize, SerialError> {
     let transmission_time_ms = calc_transmission_time_ms(port, 1);
-    port.set_timeout(Duration::from_millis(transmission_time_ms + 10)).map_err(|_| SerialError::ReadFailed)?;
-    let bytes_read = match port.read(buff) {
-        Ok(bytes) => bytes,
-        Err(_) => 0,
-    };
+    port.set_timeout(Duration::from_millis(transmission_time_ms+10)).map_err(|_| SerialError::ReadFailed)?;
+    let bytes_read = port.read(buff).map_err(|_| SerialError::ReadFailed)?;
     Ok(bytes_read)
 }
 
 pub fn read_serial_exact(port: &mut Box<dyn serialport::SerialPort>, buff: &mut [u8]) -> Result<(), SerialError> {
     let transmission_time_ms = calc_transmission_time_ms(port, buff.len());
-    port.set_timeout(Duration::from_millis(transmission_time_ms + 10)).map_err(|_| SerialError::ReadFailed)?;
+    port.set_timeout(Duration::from_millis(transmission_time_ms+10)).map_err(|_| SerialError::ReadFailed)?;
     port.read_exact(buff).map_err(|_| SerialError::ReadFailed)?;
     Ok(())
 }
 
 fn calc_bits_per_byte(port: &mut Box<dyn serialport::SerialPort>) -> usize {
-    let mut bits_per_byte = size_of::<u8>();
+    let mut bits_per_byte = 8;
     bits_per_byte += 1;
     bits_per_byte += match port.parity() {
         Ok(Parity::None) => 0,
-        Ok(Parity::Even) | Ok(Parity::Odd) => 1,
-        Err(_) => 1,
+        Ok(_) | Err(_)  => 1,
     };
     bits_per_byte += match port.stop_bits() {
         Ok(StopBits::One) => 1,
-        Ok(StopBits::Two) => 2,
-        Err(_) => 2,
+        Ok(StopBits::Two) | Err(_) => 2,
     };
     bits_per_byte
 }

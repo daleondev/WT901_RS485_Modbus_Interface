@@ -1,4 +1,4 @@
-use std::ffi::{c_char, c_float, c_int, c_uint, c_ushort};
+use std::ffi::{c_char, c_float, c_int, c_uint, c_ushort, CString};
 use std::mem::zeroed;
 
 use crate::imu_interface_manager::{ImuInterfaceManager, get_imu_manager, new_uuid, UUID_NULL};
@@ -70,27 +70,87 @@ pub extern "C" fn imu_shutdown() -> ImuError
     ImuError::ImuSuccess
 }
 
+#[allow(unused_assignments)]
 #[unsafe(no_mangle)]
-pub extern "C" fn imu_scan_devices(out_devices: *mut ImuDevice, out_num_devices: *mut c_uint) -> ImuError
+pub extern "C" fn imu_scan_devices(
+    device_names: *const *const c_char, num_device_names: c_uint,
+    baud_rates: *const c_uint, num_baud_rates: c_uint,
+    addr_range_low: c_uint, addr_range_high: c_uint,
+    out_devices: *mut *mut ImuDevice, out_num_devices: *mut c_uint) -> ImuError
 {
-    // unsafe { *out_num_devices = 0 };
+    unsafe { 
+        *out_devices = std::ptr::null_mut();
+        *out_num_devices = 0;
+    };
 
-    // let devices = match scan_devices() {
-    //     Ok(devices) => devices,
-    //     Err(err) => return err,
-    // };
+    let mut names: Vec<String> = Vec::new();
+    let mut bauds: Vec<u32> = Vec::new();
+    unsafe {
+        for i in 0..num_device_names as usize {
+            let name_ptr = device_names.add(i);
+            names.push(std::ffi::CStr::from_ptr(*name_ptr).to_string_lossy().into_owned());
+        }
+        for i in 0..num_baud_rates as usize {
+            let baud_ptr = baud_rates.add(i);
+            bauds.push(*baud_ptr);
+        }        
+    }
 
-    // unsafe {
-    //     for (i, device) in devices.iter().enumerate() {
-    //         let device_ptr = out_devices.add(i);
-    //         (*device_ptr).name = device.name.as_ptr() as *const c_char;
-    //         (*device_ptr).baudrate = device.baudrate;
-    //         (*device_ptr).addr = device.addr as c_uint;
-    //     }
-    //     *out_num_devices = devices.len() as c_uint;
-    // }
+    let mut addr_range: [u8;2] = [0;2];
+    addr_range[0] = addr_range_low as u8;
+    addr_range[1] = addr_range_high as u8;
+
+    let mut manager = get_imu_manager();
+    let manager = match manager.as_mut() {
+        Some(manager) => manager,
+        None => return ImuError::ImuErrorNotInit,
+    };
+
+    let devices_data = match manager.scan_interfaces(names, bauds, addr_range) {
+        Ok(devices_data) => devices_data,
+        Err(err) => return err,
+    };
+
+    let mut devices: Vec<ImuDevice> = Vec::with_capacity(devices_data.len());
+    for device_data in devices_data {
+        devices.push(
+            ImuDevice { 
+                name: match CString::new(device_data.name) {
+                    Ok(name) => name.into_raw(),
+                    Err(_) => return ImuError::ImuErrorUnknown,
+                },
+                baudrate: device_data.baudrate, 
+                addr: device_data.addr as c_uint 
+            }
+        );
+    }
+
+    let num_devices = devices.len();
+    let devices_ptr = devices.as_mut_ptr() as *mut ImuDevice;
+    std::mem::forget(devices);
+
+    unsafe {
+        *out_devices = devices_ptr;
+        *out_num_devices = num_devices as c_uint;
+    }
 
     ImuError::ImuSuccess
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn imu_free_devices(devices: *mut ImuDevice, num_devices: c_uint) 
+{  
+    if devices.is_null() {
+        return;
+    }
+    unsafe {
+        let devices_vec = Vec::from_raw_parts(devices, num_devices as usize, num_devices as usize);
+        for device in devices_vec {
+            if !device.name.is_null() {
+                drop(CString::from_raw(device.name as *mut c_char));
+            }
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -128,19 +188,6 @@ pub extern "C" fn imu_create_interface(device: *const ImuDevice, out_interface_i
         }
         return ImuError::ImuErrorInitFailed;
     }
-
-    // match interface.open_serial() {
-    //     Ok(_) => {},
-    //     Err(err) => {
-    //         match manager.remove_interface(id) {
-    //             Ok(_) => {},
-    //             Err(err) => {
-    //                 return err;
-    //             }
-    //         }
-    //         return err;
-    //     }
-    // }
 
     unsafe { *out_interface_id = id };
     ImuError::ImuSuccess
