@@ -34,15 +34,29 @@ pub fn write_serial_byte(port: &mut Box<dyn serialport::SerialPort>, byte: u8) -
 pub fn clear_serial(port: &mut Box<dyn serialport::SerialPort>) -> Result<(), SerialError> {
     port.set_timeout(Duration::from_micros(400)).map_err(|_| SerialError::ReadFailed)?;
     let mut buff: [u8;255] = [0;255];
-    port.read(&mut buff).map_err(|_| SerialError::ReadFailed)?;
-    Ok(())
+    match port.read(&mut buff) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            match err.kind() {
+                std::io::ErrorKind::TimedOut => Ok(()),
+                _ => Err(SerialError::ReadFailed),
+            }
+        },
+    }
 }
 
 pub fn read_serial(port: &mut Box<dyn serialport::SerialPort>, buff: &mut [u8]) -> Result<usize, SerialError> {
     let transmission_time_ms = calc_transmission_time_ms(port, 1);
     port.set_timeout(Duration::from_millis(transmission_time_ms+10)).map_err(|_| SerialError::ReadFailed)?;
-    let bytes_read = port.read(buff).map_err(|_| SerialError::ReadFailed)?;
-    Ok(bytes_read)
+    match port.read(buff) {
+        Ok(bytes_read) => Ok(bytes_read),
+        Err(err) => {
+            match err.kind() {
+                std::io::ErrorKind::TimedOut => Ok(0),
+                _ => Err(SerialError::ReadFailed),
+            }
+        },
+    }
 }
 
 pub fn read_serial_exact(port: &mut Box<dyn serialport::SerialPort>, buff: &mut [u8]) -> Result<(), SerialError> {

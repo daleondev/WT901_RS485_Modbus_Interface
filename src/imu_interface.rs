@@ -192,34 +192,9 @@ impl ImuInterface {
             let mut buff: [u8; BUFF_SIZE] = [0; BUFF_SIZE];
             let mut error_count: u32 = 0;
 
-            while running.load(Ordering::SeqCst) {
-                let result = port.lock();
-                if result.is_err() {
-                    error_count += 1;
-                    if error_count >= MAX_ERRORS {
-                        eprintln!("Too many errors, stopping thread.");
-                        running.store(false, Ordering::SeqCst);
-                        break;
-                    }
-                    continue;
-                }
-                let mut port = result.unwrap();
-
-                let result = port.as_mut();
-                if result.is_none() {
-                    error_count += 1;
-                    if error_count >= MAX_ERRORS {
-                        eprintln!("Too many errors, stopping thread.");
-                        running.store(false, Ordering::SeqCst);
-                        break;
-                    }
-                    continue;
-                }
-                let port = result.unwrap();
-
-                let _ = clear_serial(port);
-                if let Ok(read_cmd) = read_reg_cmd(addr, Register::AX, REG_NUM) {
-                    if write_serial(port, &read_cmd).is_err() {
+            macro_rules! handle_err {
+                () => {
+                    {
                         error_count += 1;
                         if error_count >= MAX_ERRORS {
                             eprintln!("Too many errors, stopping thread.");
@@ -228,16 +203,42 @@ impl ImuInterface {
                         }
                         continue;
                     }
-                    if let Ok(_) = read_serial_exact(port, &mut buff) {
-                        if buff[0] != read_cmd[0] || buff[1] != read_cmd[1] || buff[2] != 2*REG_NUM as u8 {
-                            error_count += 1;
-                            if error_count >= MAX_ERRORS {
-                                eprintln!("Too many errors, stopping thread.");
-                                running.store(false, Ordering::SeqCst);
-                                break;
-                            }
-                            continue;
+                };
+            }
+
+            while running.load(Ordering::SeqCst) {
+                let result = port.lock();
+                if result.is_err() {
+                    handle_err!();
+                }
+                let mut port = result.unwrap();
+
+                let result = port.as_mut();
+                if result.is_none() {
+                    handle_err!();
+                }
+                let port = result.unwrap();
+
+                if clear_serial(port).is_err() {
+                    handle_err!();
+                }
+
+                match read_reg_cmd(addr, Register::AX, REG_NUM) {
+                    Ok(read_cmd) => {
+                        if write_serial(port, &read_cmd).is_err() {
+                            handle_err!();
+                        } 
+
+                        if read_serial_exact(port, &mut buff).is_err() {
+                            handle_err!();
                         }
+
+                        if buff[0] != read_cmd[0] || buff[1] != read_cmd[1] || buff[2] != 2*REG_NUM as u8 {
+                            handle_err!();
+                        }
+                    },
+                    Err(_) => {
+                        handle_err!();
                     }
                 }
 
@@ -248,34 +249,38 @@ impl ImuInterface {
                     j += 2;
                 }
 
-                if let Ok(mut data) = data.lock() {
-                    data.acc[0] = (raw_data[0] as f64 / 32768.0 * 16.0) as f32;
-                    data.acc[1] = (raw_data[1] as f64 / 32768.0 * 16.0) as f32;
-                    data.acc[2] = (raw_data[2] as f64 / 32768.0 * 16.0) as f32;
-                    data.gyro[0] = (raw_data[3] as f64 / 32768.0 * 2000.0) as f32;
-                    data.gyro[1] = (raw_data[4] as f64 / 32768.0 * 2000.0) as f32;
-                    data.gyro[2] = (raw_data[5] as f64 / 32768.0 * 2000.0) as f32;
-                    data.mag[0] = raw_data[6] as i32;
-                    data.mag[1] = raw_data[7] as i32;
-                    data.mag[2] = raw_data[8] as i32;
-                    data.angle[0] = convert_angle(raw_data[9] as f64 / 32768.0 * 180.0); 
-                    data.angle[1] = convert_angle(raw_data[10] as f64 / 32768.0 * 180.0); 
-                    data.angle[2] = convert_angle(raw_data[11] as f64 / 32768.0 * 180.0);
+                match data.lock() {
+                    Ok(mut data) => {
+                        data.acc[0] = (raw_data[0] as f64 / 32768.0 * 16.0) as f32;
+                        data.acc[1] = (raw_data[1] as f64 / 32768.0 * 16.0) as f32;
+                        data.acc[2] = (raw_data[2] as f64 / 32768.0 * 16.0) as f32;
+                        data.gyro[0] = (raw_data[3] as f64 / 32768.0 * 2000.0) as f32;
+                        data.gyro[1] = (raw_data[4] as f64 / 32768.0 * 2000.0) as f32;
+                        data.gyro[2] = (raw_data[5] as f64 / 32768.0 * 2000.0) as f32;
+                        data.mag[0] = raw_data[6] as i32;
+                        data.mag[1] = raw_data[7] as i32;
+                        data.mag[2] = raw_data[8] as i32;
+                        data.angle[0] = convert_angle(raw_data[9] as f64 / 32768.0 * 180.0); 
+                        data.angle[1] = convert_angle(raw_data[10] as f64 / 32768.0 * 180.0); 
+                        data.angle[2] = convert_angle(raw_data[11] as f64 / 32768.0 * 180.0);
 
-                    if let Ok(mut callback) = data_callback.lock() {
-                        if let Some(callback) = callback.as_mut() {
-                            callback(&*data as *const ImuData);
+                        match data_callback.lock() {
+                            Ok(mut callback) => {
+                                if let Some(callback) = callback.as_mut() {
+                                    callback(&*data as *const ImuData);
+                                }
+                            },
+                            Err(_) => {
+                                handle_err!();
+                            }
                         }
                     }
-                } else {
-                    error_count += 1;
-                    if error_count >= MAX_ERRORS {
-                        eprintln!("Too many errors, stopping thread.");
-                        running.store(false, Ordering::SeqCst);
-                        break;
+                    Err(_) => {
+                        handle_err!();
                     }
                 }
 
+                error_count = 0;
                 std::thread::sleep(Duration::from_millis(1));
             }
         }));
