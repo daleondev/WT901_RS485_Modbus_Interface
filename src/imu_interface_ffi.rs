@@ -1,5 +1,6 @@
-use std::ffi::{c_char, c_float, c_int, c_uint, c_ushort, CString};
+use std::ffi::{c_char, c_float, c_int, c_uchar, c_uint, c_ushort, CString};
 use std::mem::zeroed;
+use std::sync::atomic::Ordering;
 
 use crate::imu_interface_manager::{ImuInterfaceManager, get_imu_manager, new_uuid, UUID_NULL};
 use crate::imu_interface::{ImuDeviceData, ImuInterface};
@@ -73,10 +74,10 @@ pub extern "C" fn imu_shutdown() -> ImuError
 #[allow(unused_assignments)]
 #[unsafe(no_mangle)]
 pub extern "C" fn imu_scan_devices(
-    device_names: *const *const c_char, num_device_names: c_uint,
-    baud_rates: *const c_uint, num_baud_rates: c_uint,
-    addr_range_low: c_uint, addr_range_high: c_uint,
-    out_devices: *mut *mut ImuDevice, out_num_devices: *mut c_uint) -> ImuError
+    device_names: *const *const c_char, num_device_names: usize,
+    baud_rates: *const c_uint, num_baud_rates: usize,
+    addr_range_low: c_uchar, addr_range_high: c_uchar,
+    out_devices: *mut *mut ImuDevice, out_num_devices: *mut usize) -> ImuError
 {
     unsafe { 
         *out_devices = std::ptr::null_mut();
@@ -97,8 +98,8 @@ pub extern "C" fn imu_scan_devices(
     }
 
     let mut addr_range: [u8;2] = [0;2];
-    addr_range[0] = addr_range_low as u8;
-    addr_range[1] = addr_range_high as u8;
+    addr_range[0] = addr_range_low;
+    addr_range[1] = addr_range_high;
 
     let mut manager = get_imu_manager();
     let manager = match manager.as_mut() {
@@ -131,20 +132,20 @@ pub extern "C" fn imu_scan_devices(
 
     unsafe {
         *out_devices = devices_ptr;
-        *out_num_devices = num_devices as c_uint;
+        *out_num_devices = num_devices as usize;
     }
 
     ImuError::ImuSuccess
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn imu_free_devices(devices: *mut ImuDevice, num_devices: c_uint) 
+pub extern "C" fn imu_free_devices(devices: *mut ImuDevice, num_devices: usize) 
 {  
     if devices.is_null() {
         return;
     }
     unsafe {
-        let devices_vec = Vec::from_raw_parts(devices, num_devices as usize, num_devices as usize);
+        let devices_vec = Vec::from_raw_parts(devices, num_devices as usize, num_devices);
         for device in devices_vec {
             if !device.name.is_null() {
                 drop(CString::from_raw(device.name as *mut c_char));
@@ -273,6 +274,24 @@ pub extern "C" fn imu_stop_task(interface_id: c_uint) -> ImuError
         Err(err) => return err,
     };
 
+    ImuError::ImuSuccess
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn imu_running(interface_id: c_uint, running: *mut bool) -> ImuError
+{
+    let mut manager = get_imu_manager();
+    let manager = match manager.as_mut() {
+        Some(manager) => manager,
+        None => return ImuError::ImuErrorNotInit,
+    };
+
+    let interface = match manager.get_interface(interface_id) {
+        Ok(interface) => interface,
+        Err(err) => return err,
+    };
+
+    unsafe { *running = interface.running.load(Ordering::SeqCst) };
     ImuError::ImuSuccess
 }
 

@@ -187,17 +187,32 @@ impl ImuInterface {
         self.thread = Some(std::thread::spawn(move || {
             const REG_NUM: usize = (Register::TEMP as usize + 1) - Register::AX as usize;
             const BUFF_SIZE: usize = 2*REG_NUM+5;
+            const MAX_ERRORS: u32 = 10;
+
             let mut buff: [u8; BUFF_SIZE] = [0; BUFF_SIZE];
+            let mut error_count: u32 = 0;
 
             while running.load(Ordering::SeqCst) {
                 let result = port.lock();
                 if result.is_err() {
+                    error_count += 1;
+                    if error_count >= MAX_ERRORS {
+                        eprintln!("Too many errors, stopping thread.");
+                        running.store(false, Ordering::SeqCst);
+                        break;
+                    }
                     continue;
                 }
                 let mut port = result.unwrap();
 
                 let result = port.as_mut();
                 if result.is_none() {
+                    error_count += 1;
+                    if error_count >= MAX_ERRORS {
+                        eprintln!("Too many errors, stopping thread.");
+                        running.store(false, Ordering::SeqCst);
+                        break;
+                    }
                     continue;
                 }
                 let port = result.unwrap();
@@ -205,10 +220,22 @@ impl ImuInterface {
                 let _ = clear_serial(port);
                 if let Ok(read_cmd) = read_reg_cmd(addr, Register::AX, REG_NUM) {
                     if write_serial(port, &read_cmd).is_err() {
+                        error_count += 1;
+                        if error_count >= MAX_ERRORS {
+                            eprintln!("Too many errors, stopping thread.");
+                            running.store(false, Ordering::SeqCst);
+                            break;
+                        }
                         continue;
                     }
                     if let Ok(_) = read_serial_exact(port, &mut buff) {
                         if buff[0] != read_cmd[0] || buff[1] != read_cmd[1] || buff[2] != 2*REG_NUM as u8 {
+                            error_count += 1;
+                            if error_count >= MAX_ERRORS {
+                                eprintln!("Too many errors, stopping thread.");
+                                running.store(false, Ordering::SeqCst);
+                                break;
+                            }
                             continue;
                         }
                     }
@@ -239,6 +266,13 @@ impl ImuInterface {
                         if let Some(callback) = callback.as_mut() {
                             callback(&*data as *const ImuData);
                         }
+                    }
+                } else {
+                    error_count += 1;
+                    if error_count >= MAX_ERRORS {
+                        eprintln!("Too many errors, stopping thread.");
+                        running.store(false, Ordering::SeqCst);
+                        break;
                     }
                 }
 
