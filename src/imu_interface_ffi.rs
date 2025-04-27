@@ -9,7 +9,7 @@ use crate::imu_interface::{ImuDeviceData, ImuInterface};
 pub struct ImuDevice {
     pub name: *const c_char,
     pub baudrate: c_uint,
-    pub addr: c_uint,
+    pub addr: c_uchar,
 }
 
 #[repr(C)]
@@ -121,7 +121,7 @@ pub extern "C" fn imu_scan_devices(
                     Err(_) => return ImuError::ImuErrorUnknown,
                 },
                 baudrate: device_data.baudrate, 
-                addr: device_data.addr as c_uint 
+                addr: device_data.addr
             }
         );
     }
