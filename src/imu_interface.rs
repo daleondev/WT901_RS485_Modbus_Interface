@@ -176,11 +176,12 @@ impl ImuInterface {
         if self.running.load(Ordering::SeqCst) {
             return Err(ImuError::ImuErrorAlreadyRunning);
         }
-
+        
         let port = Arc::clone(&self.port);
         let running = Arc::clone(&self.running);
         let data = Arc::clone(&self.data);
         let data_callback = Arc::clone(&self.data_callback);
+        let interface_id = self.id.clone();
         let addr = self.device.addr.clone();
 
         self.running.store(true, Ordering::SeqCst);
@@ -267,7 +268,7 @@ impl ImuInterface {
                         match data_callback.lock() {
                             Ok(mut callback) => {
                                 if let Some(callback) = callback.as_mut() {
-                                    callback(&*data as *const ImuData);
+                                    callback(interface_id, &*data as *const ImuData);
                                 }
                             },
                             Err(_) => {

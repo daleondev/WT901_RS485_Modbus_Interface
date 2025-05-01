@@ -41,7 +41,7 @@ pub enum ImuError {
     ImuErrorUnknown,
 }
 
-pub type ImuDataCallback = Option<extern "C" fn(data: *const ImuData)>;
+pub type ImuDataCallback = Option<extern "C" fn(interfaceId: c_uint, data: *const ImuData)>;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn imu_init() -> ImuError
