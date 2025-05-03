@@ -1,7 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub const REG_SIZE: u16 = 0x90;
-pub const KEY_UNLOCK: u16 = 0xB588;
+pub const KEY_UNLOCK: i16 = 0xB588u16 as i16;
 
 #[derive(TryFromPrimitive, IntoPrimitive)]
 #[repr(u16)]
@@ -99,7 +99,7 @@ pub enum Register {
 }
 
 #[derive(TryFromPrimitive)]
-#[repr(u16)]
+#[repr(i16)]
 pub enum Baud {
     B4800       = 0x01,
     B9600       = 0x02,
@@ -111,7 +111,7 @@ pub enum Baud {
 }
 
 #[derive(TryFromPrimitive, IntoPrimitive)]
-#[repr(u16)]
+#[repr(i16)]
 pub enum Bandwidth {
     HZ256       = 0x00,
     HZ188       = 0x01,
@@ -123,7 +123,7 @@ pub enum Bandwidth {
 }
 
 #[derive(TryFromPrimitive, IntoPrimitive)]
-#[repr(u16)]
+#[repr(i16)]
 pub enum Save {
     Save        = 0x00,
     Reset       = 0x01,
@@ -131,7 +131,7 @@ pub enum Save {
 }
 
 #[derive(TryFromPrimitive, IntoPrimitive)]
-#[repr(u16)]
+#[repr(i16)]
 pub enum Orientation {
     Horizontal  = 0x00,
     Vertical    = 0x01, 
@@ -214,7 +214,7 @@ pub fn read_reg_cmd(addr: u8, reg: Register, read_num: usize) -> Result<[u8; 8],
     Ok(buff)
 }
 
-pub fn write_reg_cmd(addr: u8, reg: Register, data: u16) -> Result<[u8; 8], ()> {
+pub fn write_reg_cmd(addr: u8, reg: Register, data: i16) -> Result<[u8; 8], ()> {
     let reg: u16 = reg.into();
     if reg >= REG_SIZE {
         return Err(());

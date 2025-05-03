@@ -7,9 +7,9 @@ use crate::imu_interface_ffi::{ImuData, ImuDataCallback, ImuError};
 use crate::imu_interface_manager::Uuid;
 use crate::serial_interface::{clear_serial, open_serial, read_serial_exact, write_serial, SerialError};
 
-fn convert_angle(angle: f64) -> f32 {
-    (if angle > 180.0 { angle - 360.0 } else { angle }) as f32
-}
+// fn convert_angle(angle: f64) -> f32 {
+//     (if angle > 180.0 { angle - 360.0 } else { angle }) as f32
+// }
 
 #[derive(Debug, Clone)]
 pub struct ImuDeviceData {
@@ -87,7 +87,7 @@ impl ImuInterface {
         Ok(())
     }
 
-    pub fn read_registers<const REG_NUM: usize, const BUFF_SIZE: usize>(&mut self, start_reg: Register) -> Result<[u16; REG_NUM], ImuError> {      
+    pub fn read_registers<const REG_NUM: usize, const BUFF_SIZE: usize>(&mut self, start_reg: Register) -> Result<[i16; REG_NUM], ImuError> {      
         if self.running.load(Ordering::SeqCst) || self.thread.is_some() {
             return Err(ImuError::ImuErrorAlreadyRunning);
         }
@@ -108,16 +108,16 @@ impl ImuInterface {
             return Err(ImuError::ImuErrorReadFailed);
         }
 
-        let mut data: [u16; REG_NUM] = [0; REG_NUM];
+        let mut data: [i16; REG_NUM] = [0; REG_NUM];
         let mut j: usize = 3;
         for i in 0..REG_NUM {
-            data[i] = ((result[j] as u16) << 8) | (result[j+1] as u16);
+            data[i] = ((result[j] as i16) << 8) | (result[j+1] as i16);
             j += 2;
         }
         Ok(data)
     }
 
-    pub fn read_register(&mut self, reg: Register) -> Result<u16, ImuError> {
+    pub fn read_register(&mut self, reg: Register) -> Result<i16, ImuError> {
         if self.running.load(Ordering::SeqCst) || self.thread.is_some() {
             return Err(ImuError::ImuErrorAlreadyRunning);
         }
@@ -142,10 +142,10 @@ impl ImuInterface {
         if result[0] != read_cmd[0] || result[1] != read_cmd[1] || result[2] != 2 {
             return Err(ImuError::ImuErrorReadFailed);
         }
-        Ok(((result[3] as u16) << 8) | (result[4] as u16))
+        Ok(((result[3] as i16) << 8) | (result[4] as i16))
     }
 
-    pub fn write_register(&mut self, reg: Register, data: u16) -> Result<(), ImuError> {
+    pub fn write_register(&mut self, reg: Register, data: i16) -> Result<(), ImuError> {
         if self.running.load(Ordering::SeqCst) || self.thread.is_some() {
             return Err(ImuError::ImuErrorAlreadyRunning);
         }
@@ -243,10 +243,10 @@ impl ImuInterface {
                     }
                 }
 
-                let mut raw_data: [u16; REG_NUM] = [0; REG_NUM];
+                let mut raw_data: [i16; REG_NUM] = [0; REG_NUM];
                 let mut j: usize = 3;
                 for i in 0..REG_NUM {
-                    raw_data[i] = ((buff[j] as u16) << 8) | (buff[j+1] as u16);
+                    raw_data[i] = ((buff[j] as i16) << 8) | (buff[j+1] as i16);
                     j += 2;
                 }
 
@@ -261,9 +261,9 @@ impl ImuInterface {
                         data.mag[0] = raw_data[6] as i32;
                         data.mag[1] = raw_data[7] as i32;
                         data.mag[2] = raw_data[8] as i32;
-                        data.angle[0] = convert_angle(raw_data[9] as f64 / 32768.0 * 180.0); 
-                        data.angle[1] = convert_angle(raw_data[10] as f64 / 32768.0 * 180.0); 
-                        data.angle[2] = convert_angle(raw_data[11] as f64 / 32768.0 * 180.0);
+                        data.angle[0] = (raw_data[9] as f64 / 32768.0 * 180.0) as f32; 
+                        data.angle[1] = (raw_data[10] as f64 / 32768.0 * 180.0) as f32; 
+                        data.angle[2] = (raw_data[11] as f64 / 32768.0 * 180.0) as f32;
 
                         match data_callback.lock() {
                             Ok(mut callback) => {
@@ -308,15 +308,15 @@ impl ImuInterface {
     }
 
     pub fn save(&mut self) -> Result<(), ImuError> {
-        self.write_register(Register::SAVE, Save::Save as u16)
+        self.write_register(Register::SAVE, Save::Save as i16)
     }
 
     pub fn reboot(&mut self) -> Result<(), ImuError> {
-        self.write_register(Register::SAVE, Save::Reboot as u16)
+        self.write_register(Register::SAVE, Save::Reboot as i16)
     }
 
     pub fn reset(&mut self) -> Result<(), ImuError> {
-        self.write_register(Register::SAVE, Save::Reset as u16)
+        self.write_register(Register::SAVE, Save::Reset as i16)
     }
 
     pub fn get_band_width(&mut self) -> Result<u16, ImuError> {
@@ -366,9 +366,9 @@ impl ImuInterface {
                 (raw_data[5] as f64 / 32768.0 * 2000.0) as f32,
             ],
             angle: [
-                convert_angle(raw_data[9] as f64 / 32768.0 * 180.0), 
-                convert_angle(raw_data[10] as f64 / 32768.0 * 180.0), 
-                convert_angle(raw_data[11] as f64 / 32768.0 * 180.0),
+                (raw_data[9] as f64 / 32768.0 * 180.0) as f32, 
+                (raw_data[10] as f64 / 32768.0 * 180.0) as f32, 
+                (raw_data[11] as f64 / 32768.0 * 180.0) as f32,
             ],
             mag: [
                 raw_data[6] as i32, 
