@@ -182,10 +182,10 @@ pub static CRC_LO: [u8; 256] = [
     0x40
 ];
 
-pub fn crc16(data: &[u8], data_len: u16) -> u16 {
+pub fn crc16(data: &[u8]) -> u16 {
     let mut crc_hi: u8 = 0xFF;
     let mut crc_lo: u8 = 0xFF;
-    for i in 0..data_len {
+    for i in 0..data.len() {
         let index = crc_hi ^ data[i as usize];
         crc_hi = crc_lo ^ CRC_HI[index as usize];
         crc_lo = CRC_LO[index as usize];
@@ -207,7 +207,7 @@ pub fn read_reg_cmd(addr: u8, reg: Register, read_num: usize) -> Result<[u8; 8],
     buff[4] = (read_num >> 8) as u8; // High byte of read_num 
     buff[5] = (read_num & 0xFF) as u8; // Low byte of read_num
 
-    let crc = crc16(&buff[0..6], 6); // Calculate CRC
+    let crc = crc16(&buff[0..6]); // Calculate CRC
     buff[6] = (crc >> 8) as u8; // High byte of CRC
     buff[7] = (crc & 0xFF) as u8; // Low byte of CRC
 
@@ -228,7 +228,7 @@ pub fn write_reg_cmd(addr: u8, reg: Register, data: i16) -> Result<[u8; 8], ()> 
     buff[4] = (data >> 8) as u8; // High byte of write_num 
     buff[5] = (data & 0xFF) as u8; // Low byte of write_num
 
-    let crc = crc16(&buff[0..6], 6); // Calculate CRC
+    let crc = crc16(&buff[0..6]); // Calculate CRC
     buff[6] = (crc >> 8) as u8; // High byte of CRC
     buff[7] = (crc & 0xFF) as u8; // Low byte of CRC
 
